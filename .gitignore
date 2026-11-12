@@ -1,0 +1,17 @@
+# Зависимости Node.js
+node_modules/
+server/node_modules/
+
+# Сборка Vite
+dist/
+dist-ssr/
+
+# Локальные файлы окружения и секреты
+.env
+.env.local
+
+# Системные файлы и логи
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
