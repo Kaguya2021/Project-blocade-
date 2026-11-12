@@ -3,10 +3,21 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import crypto from 'crypto';
+import pkg from 'pg';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const { Pool } = pkg;
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Раздаем собранный фронтенд Vite из папки dist
+app.use(express.static(path.join(__dirname, '../dist')));
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
@@ -16,8 +27,43 @@ const io = new Server(httpServer, {
 const BOARD_SIZE = 9;
 const INITIAL_WALLS = 10;
 
-// In-memory store (can be connected to PostgreSQL / Neon)
-const users = new Map();
+// Подключение к Neon PostgreSQL через DATABASE_URL из переменных окружения Render
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
+
+// Автоматическое создание таблицы пользователей при запуске сервера
+async function initDB() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS blocade_users (
+        username TEXT PRIMARY KEY,
+        password_hash TEXT NOT NULL,
+        avatar TEXT DEFAULT '👑',
+        coins INT DEFAULT 1250,
+        elo INT DEFAULT 1000,
+        wins INT DEFAULT 0,
+        losses INT DEFAULT 0,
+        level INT DEFAULT 1,
+        xp INT DEFAULT 0,
+        created_at TEXT,
+        owned_skins TEXT[],
+        equipped_pawn TEXT,
+        equipped_board TEXT,
+        equipped_wall TEXT,
+        equipped_effect TEXT,
+        daily_streak INT DEFAULT 1,
+        last_claim_date TEXT
+      );
+    `);
+    console.log('PostgreSQL database connected & table verified.');
+  } catch (err) {
+    console.error('Database initialization error:', err);
+  }
+}
+initDB();
+
 const rooms = new Map();
 let quickMatchQueue = [];
 
@@ -102,58 +148,108 @@ function getValidMoves(playerPos, otherPos, walls) {
   return moves;
 }
 
-// Auth Endpoints (Login + Password)
-app.post('/api/register', (req, res) => {
+// REST API для авторизации с сохранением в PostgreSQL
+app.post('/api/register', async (req, res) => {
   const { username, password } = req.body;
   const clean = String(username || '').trim().toLowerCase();
   if (clean.length < 3 || String(password || '').length < 4) {
     return res.status(400).json({ error: 'Invalid username or password length' });
   }
-  if (users.has(clean)) {
-    return res.status(409).json({ error: 'Username already exists' });
-  }
-  const profile = {
-    username: String(username).trim(),
-    passwordHash: hashPassword(password),
-    coins: 1200,
-    elo: 1000,
-    wins: 0,
-    losses: 0,
-    level: 1,
-    ownedSkins: ['pawn_emerald', 'board_classic_wood', 'wall_classic_green', 'fx_emerald'],
-    equipped: {
-      pawn: 'pawn_emerald',
-      board: 'board_classic_wood',
-      wall: 'wall_classic_green',
-      effect: 'fx_emerald'
+
+  try {
+    const check = await pool.query('SELECT username FROM blocade_users WHERE username = $1', [clean]);
+    if (check.rows.length > 0) {
+      return res.status(409).json({ error: 'Username already exists' });
     }
-  };
-  users.set(clean, profile);
-  const { passwordHash, ...safeProfile } = profile;
-  res.json({ user: safeProfile });
+
+    const passwordHash = hashPassword(password);
+    const createdAt = new Date().toISOString().slice(0, 10);
+    const ownedSkins = ['pawn_emerald', 'board_classic_wood', 'wall_classic_green', 'fx_emerald'];
+
+    await pool.query(
+      `INSERT INTO blocade_users (
+        username, password_hash, avatar, coins, elo, wins, losses, level, xp, 
+        created_at, owned_skins, equipped_pawn, equipped_board, equipped_wall, equipped_effect
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+      [
+        String(username).trim(), passwordHash, '👑', 1250, 1000, 0, 0, 1, 0,
+        createdAt, ownedSkins, 'pawn_emerald', 'board_classic_wood', 'wall_classic_green', 'fx_emerald'
+      ]
+    );
+
+    res.json({
+      user: {
+        username: String(username).trim(),
+        avatar: '👑',
+        coins: 1250,
+        elo: 1000,
+        wins: 0,
+        losses: 0,
+        level: 1,
+        xp: 0,
+        createdAt,
+        ownedSkins,
+        equipped: {
+          pawn: 'pawn_emerald',
+          board: 'board_classic_wood',
+          wall: 'wall_classic_green',
+          effect: 'fx_emerald'
+        }
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
   const clean = String(username || '').trim().toLowerCase();
-  const profile = users.get(clean);
-  if (!profile || profile.passwordHash !== hashPassword(password)) {
-    return res.status(401).json({ error: 'Invalid credentials' });
+
+  try {
+    const result = await pool.query('SELECT * FROM blocade_users WHERE LOWER(username) = $1', [clean]);
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const row = result.rows[0];
+    if (row.password_hash !== hashPassword(password)) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    res.json({
+      user: {
+        username: row.username,
+        avatar: row.avatar,
+        coins: row.coins,
+        elo: row.elo,
+        wins: row.wins,
+        losses: row.losses,
+        level: row.level,
+        xp: row.xp,
+        createdAt: row.created_at,
+        ownedSkins: row.owned_skins,
+        equipped: {
+          pawn: row.equipped_pawn,
+          board: row.equipped_board,
+          wall: row.equipped_wall,
+          effect: row.equipped_effect
+        }
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database error' });
   }
-  const { passwordHash, ...safeProfile } = profile;
-  res.json({ user: safeProfile });
 });
 
-app.post('/api/sync', (req, res) => {
-  const { username, updates } = req.body;
-  const clean = String(username || '').trim().toLowerCase();
-  const profile = users.get(clean);
-  if (!profile) return res.status(404).json({ error: 'User not found' });
-  Object.assign(profile, updates);
-  const { passwordHash, ...safeProfile } = profile;
-  res.json({ user: safeProfile });
+// Отдача index.html для роутинга фронтенда
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../dist', 'index.html'));
 });
 
+// Socket.IO логика комнат и онлайн-матчей
 function createRoomState(code, p1Socket, p1Meta) {
   return {
     code,
