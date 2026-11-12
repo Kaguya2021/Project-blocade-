@@ -1,3 +1,5 @@
+// src/App.jsx
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { io } from 'socket.io-client';
 import {
@@ -87,32 +89,6 @@ class SoundFX {
 }
 const sfx = new SoundFX();
 
-const CATALOG = {
-  pawn: [
-    { id: 'pawn_emerald', name: 'Emerald Core', rarity: 'COMMON', price: 0, gradient: 'radial-gradient(circle at 30% 30%, #86efac, #55C879 55%, #15803d)', ring: '#bbf7d0', glow: 'rgba(85, 200, 121, 0.5)' },
-    { id: 'pawn_gold', name: 'Sovereign Gold', rarity: 'RARE', price: 450, gradient: 'radial-gradient(circle at 30% 30%, #fef08a, #E9C56B 55%, #a16207)', ring: '#fef9c3', glow: 'rgba(233, 197, 107, 0.55)' }
-  ],
-  board: [
-    { id: 'board_classic_wood', name: 'Classic Wood', rarity: 'COMMON', price: 0, frameBg: '#2A251D', cellBg: '#363026', cellBorder: '#473F32', grooveBg: '#191713' },
-    { id: 'board_neon_grid', name: 'Neon Grid', rarity: 'EPIC', price: 950, frameBg: '#111827', cellBg: '#1E293B', cellBorder: '#334155', grooveBg: '#090D16' }
-  ],
-  wall: [
-    { id: 'wall_classic_green', name: 'Classic Green', rarity: 'COMMON', price: 0, bg: 'linear-gradient(135deg, #6EE794, #55C879 50%, #379956)', shadow: '0 0 12px rgba(85,200,121,0.45)', border: '#A7F3D0' },
-    { id: 'wall_golden', name: 'Golden Barricade', rarity: 'EPIC', price: 850, bg: 'linear-gradient(135deg, #FDE047, #E9C56B 50%, #A16207)', shadow: '0 0 14px rgba(233,197,107,0.55)', border: '#FEF9C3' }
-  ],
-  effect: [
-    { id: 'fx_emerald', name: 'Emerald Aura', rarity: 'COMMON', price: 0, color: '#55C879' }
-  ]
-};
-
-const BOT_PROFILES = [
-  { id: 'EASY', name: 'Rookie Bot', elo: 800, avatar: '🤖' },
-  { id: 'NORMAL', name: 'Guard Bot', elo: 1050, avatar: '🛡️' },
-  { id: 'MEDIUM', name: 'Tactician AI', elo: 1300, avatar: '🧠' },
-  { id: 'HARD', name: 'Grandmaster AI', elo: 1600, avatar: '⚔️' },
-  { id: 'EXPERT', name: 'Apex Oracle', elo: 1950, avatar: '👑' }
-];
-
 const BOARD_SIZE = 9;
 const INITIAL_WALLS = 10;
 
@@ -199,7 +175,7 @@ function getValidMoves(playerPos, otherPos, walls) {
   return moves;
 }
 
-// УМНЫЙ БОТ (Без спама стенами, движение в приоритете)
+// УМНЫЙ БОТ
 function computeSmartBotAction(botSide, p1Pos, p2Pos, walls, botWallsLeft) {
   const botPos = botSide === 'P1' ? p1Pos : p2Pos;
   const oppPos = botSide === 'P1' ? p2Pos : p1Pos;
@@ -215,7 +191,6 @@ function computeSmartBotAction(botSide, p1Pos, p2Pos, walls, botWallsLeft) {
   const curBotDist = shortestPathLength(botPos, botGoal, walls);
   const curOppDist = shortestPathLength(oppPos, oppGoal, walls);
 
-  // Бот ставит стену ТОЛЬКО если соперник подобрался ближе к победе
   if (botWallsLeft > 0 && curOppDist <= curBotDist && Math.random() < 0.45) {
     let bestWall = null;
     let bestScore = -999;
@@ -255,10 +230,10 @@ export default function App() {
   const [authError, setAuthError] = useState('');
 
   const [screen, setScreen] = useState('menu');
-  const [gameMode, setGameMode] = useState('bot'); // 'bot' | 'online'
-  const [botDiff, setBotDiff] = useState('MEDIUM');
-  const [playerSide, setPlayerSide] = useState('P1');
+  const [gameMode, setGameMode] = useState('bot');
+  const [playerSide, setPlayerSide] = useState('P1'); // Игрок всегда P1 (внизу, идет к ряду 0)
 
+  // Исправлено: P1 всегда внизу (строка 8), бот/соперник P2 всегда вверху (строка 0)
   const [p1Pos, setP1Pos] = useState({ r: 8, c: 4 });
   const [p2Pos, setP2Pos] = useState({ r: 0, c: 4 });
   const [p1WallsLeft, setP1WallsLeft] = useState(INITIAL_WALLS);
@@ -270,9 +245,6 @@ export default function App() {
   const [onlineRoomCode, setOnlineRoomCode] = useState(null);
 
   const [selectedOrientation, setSelectedOrientation] = useState(null);
-  const [hoverWall, setHoverWall] = useState(null);
-  const [draggingWall, setDraggingWall] = useState(null);
-  const boardRef = useRef(null);
 
   useEffect(() => {
     socket.connect();
@@ -321,8 +293,9 @@ export default function App() {
   const startBotMatch = () => {
     sfx.play('click');
     setGameMode('bot');
-    setP1Pos({ r: 8, c: 4 });
-    setP2Pos({ r: 0, c: 4 });
+    setPlayerSide('P1');
+    setP1Pos({ r: 8, c: 4 }); // Ваша фишка внизу
+    setP2Pos({ r: 0, c: 4 }); // Бот вверху
     setP1WallsLeft(INITIAL_WALLS);
     setP2WallsLeft(INITIAL_WALLS);
     setWalls([]);
@@ -336,10 +309,10 @@ export default function App() {
     socket.emit('quick_match', { user: currentUser });
   };
 
-  const isPlayerTurn = screen === 'game' && !matchWinner && (gameMode === 'bot' ? turn === playerSide && !botThinking : true);
-  const myPos = playerSide === 'P1' ? p1Pos : p2Pos;
-  const oppPos = playerSide === 'P1' ? p2Pos : p1Pos;
-  const myWalls = playerSide === 'P1' ? p1WallsLeft : p2WallsLeft;
+  const isPlayerTurn = screen === 'game' && !matchWinner && (gameMode === 'bot' ? turn === 'P1' && !botThinking : true);
+  const myPos = p1Pos;
+  const oppPos = p2Pos;
+  const myWalls = p1WallsLeft;
 
   const validMoveTargets = useMemo(() => {
     if (!isPlayerTurn) return [];
@@ -349,82 +322,48 @@ export default function App() {
   const handleCellClick = (r, c) => {
     if (!isPlayerTurn || !validMoveTargets.some((m) => m.r === r && m.c === c)) return;
 
-    const newP1 = playerSide === 'P1' ? { r, c } : p1Pos;
-    const newP2 = playerSide === 'P2' ? { r, c } : p2Pos;
-    const nextTurn = turn === 'P1' ? 'P2' : 'P1';
+    const newP1 = { r, c };
+    const nextTurn = 'P2';
     sfx.play('move');
 
     if (gameMode === 'online') {
-      socket.emit('make_move', { code: onlineRoomCode, p1Pos: newP1, p2Pos: newP2, walls, turn: nextTurn, p1Walls: p1WallsLeft, p2Walls: p2WallsLeft });
+      socket.emit('make_move', { code: onlineRoomCode, p1Pos: newP1, p2Pos, walls, turn: nextTurn, p1Walls: p1WallsLeft, p2Walls: p2WallsLeft });
     } else {
-      if (playerSide === 'P1') setP1Pos({ r, c });
-      else setP2Pos({ r, c });
+      setP1Pos(newP1);
       setTurn(nextTurn);
-      if (r === (playerSide === 'P1' ? 0 : 8)) setMatchWinner(playerSide);
+      if (r === 0) setMatchWinner('P1'); // Победа, если дошли до ряда 0 (верх)
     }
   };
 
-  const attemptPlaceWall = (r, c, o) => {
-    if (!isPlayerTurn || myWalls <= 0) return;
-    const cand = { r, c, o };
-    if (!canPlaceWall(cand, walls, p1Pos, p2Pos)) {
-      sfx.play('error');
-      return;
-    }
-
-    const nextWalls = [...walls, cand];
-    const nextP1Walls = playerSide === 'P1' ? p1WallsLeft - 1 : p1WallsLeft;
-    const nextP2Walls = playerSide === 'P2' ? p2WallsLeft - 1 : p2WallsLeft;
-    const nextTurn = turn === 'P1' ? 'P2' : 'P1';
-
-    sfx.play('wall');
-    setSelectedOrientation(null);
-    setHoverWall(null);
-
-    if (gameMode === 'online') {
-      socket.emit('make_move', { code: onlineRoomCode, p1Pos, p2Pos, walls: nextWalls, turn: nextTurn, p1Walls: nextP1Walls, p2Walls: nextP2Walls });
-    } else {
-      setWalls(nextWalls);
-      if (playerSide === 'P1') setP1WallsLeft(nextP1Walls);
-      else setP2WallsLeft(nextP2Walls);
-      setTurn(nextTurn);
-    }
-  };
-
-  // Bot execution effect
+  // Bot execution effect (Бот играет за P2)
   useEffect(() => {
     if (gameMode !== 'bot' || screen !== 'game' || matchWinner) return;
-    const oppSide = playerSide === 'P1' ? 'P2' : 'P1';
-    if (turn !== oppSide) return;
+    if (turn !== 'P2') return;
 
     setBotThinking(true);
     const timer = setTimeout(() => {
-      const oppWalls = oppSide === 'P1' ? p1WallsLeft : p2WallsLeft;
-      const action = computeSmartBotAction(oppSide, p1Pos, p2Pos, walls, oppWalls);
+      const action = computeSmartBotAction('P2', p1Pos, p2Pos, walls, p2WallsLeft);
 
       if (action) {
         if (action.type === 'move') {
-          if (oppSide === 'P1') setP1Pos({ r: action.r, c: action.c });
-          else setP2Pos({ r: action.r, c: action.c });
+          setP2Pos({ r: action.r, c: action.c });
           sfx.play('move');
-          if (action.r === (oppSide === 'P1' ? 0 : 8)) setMatchWinner(oppSide);
+          if (action.r === BOARD_SIZE - 1) setMatchWinner('P2'); // Бот дошел до низа
         } else if (action.type === 'wall') {
           setWalls((prev) => [...prev, { r: action.r, c: action.c, o: action.o }]);
-          if (oppSide === 'P1') setP1WallsLeft((w) => w - 1);
-          else setP2WallsLeft((w) => w - 1);
+          setP2WallsLeft((w) => w - 1);
           sfx.play('wall');
         }
       }
       setBotThinking(false);
-      setTurn(playerSide);
+      setTurn('P1');
     }, 600);
 
     return () => clearTimeout(timer);
-  }, [turn, screen, gameMode, playerSide, p1Pos, p2Pos, walls]);
+  }, [turn, screen, gameMode, p1Pos, p2Pos, walls]);
 
   return (
     <div className="min-h-screen bg-[#171714] text-[#F4F1E8] flex flex-col">
-      {/* AUTH MODAL */}
       {authModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md rounded-2xl bg-[#22211D] border border-white/10 p-6 shadow-2xl">
@@ -465,7 +404,6 @@ export default function App() {
         </div>
       )}
 
-      {/* TOP BAR */}
       <header className="px-4 py-3 flex items-center justify-between border-b border-white/5">
         <div className="flex items-center gap-2">
           <div className="w-9 h-9 rounded-xl bg-[#55C879] flex items-center justify-center">
@@ -481,7 +419,6 @@ export default function App() {
         </div>
       </header>
 
-      {/* MAIN SCREEN */}
       <main className="flex-1 flex flex-col items-center justify-center p-4">
         {screen === 'menu' && (
           <div className="space-y-4 text-center max-w-sm w-full">
@@ -503,10 +440,9 @@ export default function App() {
         {screen === 'game' && (
           <div className="flex flex-col items-center gap-4">
             <div className="text-sm font-bold text-[#55C879]">
-              {matchWinner ? `Победитель: ${matchWinner}` : isPlayerTurn ? t.yourTurn : t.oppTurn}
+              {matchWinner ? `Победитель: ${matchWinner === 'P1' ? 'Игрок' : 'Соперник'}` : isPlayerTurn ? t.yourTurn : t.botThinking}
             </div>
 
-            {/* BOARD */}
             <div className="relative aspect-square w-full max-w-[400px] bg-[#2A251D] p-3 rounded-2xl shadow-2xl">
               <div className="relative w-full h-full grid grid-cols-9 grid-rows-9 gap-1.5 bg-[#191713] p-1 rounded-xl">
                 {Array.from({ length: 81 }).map((_, idx) => {
@@ -520,9 +456,11 @@ export default function App() {
                       onClick={() => handleCellClick(r, c)}
                       className={`relative rounded flex items-center justify-center ${isValid ? 'ring-2 ring-[#55C879] cursor-pointer bg-[#55C879]/20' : 'bg-[#363026]'}`}
                     >
+                      {/* P1 (Ваша фишка) всегда зеленая внизу */}
                       {p1Pos.r === r && p1Pos.c === c && (
                         <div className="w-3/4 h-3/4 rounded-full bg-[#55C879] shadow-[0_0_12px_#55C879]" />
                       )}
+                      {/* P2 (Бот/Соперник) всегда оранжевая вверху */}
                       {p2Pos.r === r && p2Pos.c === c && (
                         <div className="w-3/4 h-3/4 rounded-full bg-amber-500 shadow-[0_0_12px_#f59e0b]" />
                       )}
@@ -532,7 +470,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* WALL CONTROLS */}
             <div className="flex gap-4">
               <button
                 onClick={() => setSelectedOrientation('H')}
