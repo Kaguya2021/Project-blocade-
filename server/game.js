@@ -13,27 +13,32 @@ export const MIN_ELO = 100;
 export const TURN_SECONDS = 30;
 export const MAX_TIMEOUTS = 3;
 
-// Полный каталог товаров магазина, чтобы сервер одобрял покупку
+// Полный каталог товаров со всеми категориями (pawn, board, wall, effect)
 export const CATALOG = {
+  pawn: {
+    'default': 0,
+    'emerald-core': 0,
+    'sovereign-gold': 450,
+    'inferno-blaze': 850,
+    'glacial-frost': 850
+  },
+  board: {
+    'default': 0
+  },
   wall: {
+    'default': 0,
     'classic-green': 0,
     'crimson-mahogany': 400,
     'golden-barricade': 850,
     'neon-laser-wall': 950,
     'crystal-prism': 1350
   },
-  pawn: {
-    default: 0
-  },
-  board: {
-    default: 0
-  },
   effect: {
-    default: 0
+    'default': 0
   }
 };
 
-export const BOT_WIN_COINS = { easy: 50, medium: 100, hard: 200 };
+export const BOT_WIN_COINS = { easy: 50, medium: 100, hard: 200, default: 100 };
 export const BOT_LOSS_COINS = 15;
 export const BOT_WIN_XP = 75;
 export const BOT_LOSS_XP = 20;
