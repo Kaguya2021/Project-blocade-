@@ -13,11 +13,24 @@ export const MIN_ELO = 100;
 export const TURN_SECONDS = 30;
 export const MAX_TIMEOUTS = 3;
 
+// Полный каталог товаров магазина, чтобы сервер одобрял покупку
 export const CATALOG = {
-  pawn: { default: 0 },
-  board: { default: 0 },
-  wall: { default: 0 },
-  effect: { default: 0 }
+  wall: {
+    'classic-green': 0,
+    'crimson-mahogany': 400,
+    'golden-barricade': 850,
+    'neon-laser-wall': 950,
+    'crystal-prism': 1350
+  },
+  pawn: {
+    default: 0
+  },
+  board: {
+    default: 0
+  },
+  effect: {
+    default: 0
+  }
 };
 
 export const BOT_WIN_COINS = { easy: 50, medium: 100, hard: 200 };
@@ -69,7 +82,6 @@ export function createMatch(code, p1, p2) {
 }
 
 export function applyMove(m, side, r, c) {
-  // Упрощенная проверка хода (или ваша полная логика игры Корридор / Blocade)
   const p = m.pos[side];
   const dr = Math.abs(p.r - r);
   const dc = Math.abs(p.c - c);
