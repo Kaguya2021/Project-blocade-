@@ -107,7 +107,8 @@ export function createMatch(code, p1, p2) {
   return {
     code,
     players: { P1: p1, P2: p2 },
-    pos: { P1: { r: 0, c: 4 }, P2: { r: 8, c: 4 } },
+    // как на клиенте: P1 стартует внизу (идёт к строке 0), P2 — вверху (идёт к строке 8)
+    pos: { P1: { r: 8, c: 4 }, P2: { r: 0, c: 4 } },
     walls: [],
     wallsLeft: { P1: 10, P2: 10 },
     turn: 'P1',
@@ -198,7 +199,7 @@ export function applyMove(m, side, r, c) {
   const legal = getValidMoves(m.pos[side], m.pos[otherSide(side)], m.walls);
   if (!legal.some((mv) => mv.r === r && mv.c === c)) return { ok: false, error: 'INVALID_MOVE' };
   m.pos[side] = { r, c };
-  const won = side === 'P1' ? r === SIZE - 1 : r === 0;
+  const won = side === 'P1' ? r === 0 : r === SIZE - 1;
   m.turn = otherSide(side);
   return { ok: true, won };
 }
@@ -208,11 +209,11 @@ export function applyWall(m, side, r, c, o) {
   if (m.wallsLeft[side] <= 0) return { ok: false, error: 'NO_WALLS' };
   if ((o !== 'H' && o !== 'V') || !Number.isInteger(r) || !Number.isInteger(c)) return { ok: false, error: 'INVALID_WALL' };
   if (r < 0 || r >= SIZE - 1 || c < 0 || c >= SIZE - 1) return { ok: false, error: 'INVALID_WALL' };
-  const cand = { r, c, o };
+  const cand = { r, c, o, s: side }; // s — чей это блок (для отображения скина владельца)
   if (m.walls.some((w) => wallsConflict(w, cand))) return { ok: false, error: 'INVALID_WALL' };
   const next = [...m.walls, cand];
-  // P1 идёт вниз (к строке 8), P2 — вверх (к строке 0)
-  if (!pathExists(m.pos.P1, SIZE - 1, next) || !pathExists(m.pos.P2, 0, next)) {
+  // P1 идёт вверх (к строке 0), P2 — вниз (к строке 8)
+  if (!pathExists(m.pos.P1, 0, next) || !pathExists(m.pos.P2, SIZE - 1, next)) {
     return { ok: false, error: 'INVALID_WALL' };
   }
   m.walls = next;
